@@ -24,7 +24,7 @@ Apa saja yang bisa dilakukan:
 - **Buat automasi** — kirim invoice otomatis, backup data, proses file
 - **Buat AI workflow** — integrasi dengan layanan AI untuk bisnis Anda
 - **Kelola Docker** — menjalankan aplikasi dalam container yang rapi
-- **Deploy** — menyiapkan aplikasi agar bisa diakses orang lain
+- **Deploy** — membantu menyiapkan aplikasi untuk diakses online (perlu server/cloud hosting sendiri)
 
 Semua dikerjakan otomatis. Anda cukup memberi arahan.
 
@@ -44,8 +44,30 @@ Setelah install, berikut yang ada di komputer Anda:
 │   └── status.md           ← Command /status untuk cek kondisi sistem
 └── skills/
     └── project-builder/
-        └── SKILL.md        ← Panduan membangun project dari awal
+ └── SKILL.md              ← Panduan membangun project dari awal
 ```
+
+Di atas adalah struktur folder setelah install — file-file config disalin ke `~/.config/kilo/`.
+
+### Struktur Repository
+
+Proyek ini juga menyertakan file tambahan di repositori yang tidak ikut tercopy saat install:
+
+```
+kilo-end-user/
+├── config/                  ← File yang dicopy ke ~/.config/kilo/
+├── docs/
+│   ├── architecture.md      ← Penjelasan arsitektur
+│   ├── best-practices.md    ← Panduan efektif pakai AI agent
+│   └── SECURITY-AUDIT.md    ← Laporan audit keamanan
+├── install.sh               ← Installer (entry point)
+├── CONTRIBUTING.md          ← Panduan kontribusi
+├── CHANGELOG.md             ← Riwayat perubahan
+├── README.md                ← Dokumen ini
+└── LICENSE                  ← Lisensi MIT
+```
+
+File-file di `config/` adalah template — saat install, script `install.sh` menyalinnya ke `~/.config/kilo/` dan mengisinya dengan pilihan provider, model, dan API key Anda.
 
 ---
 
@@ -65,6 +87,8 @@ Installer akan otomatis:
 5. Mengkonfigurasi semuanya
 
 Tunggu hingga selesai. Biasanya butuh 2-5 menit tergantung kecepatan internet.
+
+> **Sebelum menjalankan:** Sebaiknya inspeksi dulu isi script sebelum di-pipe ke bash. Buka https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main/install.sh di browser untuk melihat isinya. Pastikan Anda nyaman dengan apa yang akan dijalankan. Ini praktik keamanan yang baik untuk script dari internet.
 
 ---
 
@@ -114,7 +138,7 @@ curl -fsSL https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main/install.s
 
 Saat install, Anda akan diminta memilih provider dan memasukkan API key. Berikut cara mendapatkannya:
 
-### DeepSeek (DeepSeek V4 Pro) — Default
+### DeepSeek (deepseek-chat) — Default
 
 1. Hubungi tim Anda untuk mendapatkan API key DeepSeek
 2. Atau buat akun di https://platform.deepseek.com/
@@ -308,6 +332,8 @@ Kilo punya beberapa command khusus yang bisa Anda pakai:
 
 Cara pakai: cukup ketik command di chat Kilo.
 
+Selain command di atas, Kilo juga menggunakan **MCP (Model Context Protocol)** — sebuah standar yang memungkinkan AI berinteraksi langsung dengan file, Git, Docker, dan memory di komputer Anda. Semua sudah dikonfigurasi dan siap pakai.
+
 ---
 
 ## Troubleshooting
@@ -340,12 +366,16 @@ curl -fsSL https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main/install.s
 
 ### Node.js versi lama
 
-Update Node.js:
+Update Node.js menggunakan **nvm** (Node Version Manager):
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo bash -
-sudo apt-get install -y nodejs
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+exec bash
+nvm install --lts
+nvm use --lts
 ```
+
+> **Catatan:** Metode NodeSource (deb.nodesource.com) sudah deprecated. Gunakan nvm seperti di atas untuk hasil yang lebih stabil dan mudah dikelola.
 
 ### Mau ganti provider/model
 
@@ -360,6 +390,46 @@ Untuk memperbarui konfigurasi, jalankan ulang installer:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main/install.sh | bash
 ```
+
+---
+
+## Pertanyaan Umum
+
+### Apa bedanya Kilo dengan ChatGPT?
+
+ChatGPT adalah chatbot AI serbaguna. Kilo adalah AI coding agent yang berjalan di komputer Anda dan bisa menulis kode, menjalankan Docker, membuat file, dan mengelola project — bukan sekedar ngobrol.
+
+### Apa saya harus bisa coding?
+
+Tidak sama sekali. Kilo dirancang untuk user non-teknis. Cukup bilang dalam bahasa sehari-hari apa yang ingin dibuat.
+
+### Kilo bisa buat aplikasi apa saja?
+
+Aplikasi web, landing page, API/backend, automasi, dashboard, sistem inventory, booking, e-commerce, dan banyak lagi. Intinya aplikasi berbasis web yang jalan di server.
+
+### Apakah aplikasi yang dibuat bisa diakses dari internet?
+
+Bisa, tapi perlu server atau cloud hosting sendiri. Kilo menyiapkan aplikasi dan Docker-nya. Untuk publish ke internet, Anda perlu domain + VPS (Virtual Private Server) atau layanan cloud. AI akan memandu proses deploy-nya.
+
+### Apa itu Docker? Apakah saya perlu install sendiri?
+
+Docker sudah diinstall otomatis oleh installer Kilo. Anda tidak perlu paham cara kerjanya — AI yang akan mengatur semuanya. Docker memastikan aplikasi Anda jalan dengan rapi tanpa konflik.
+
+### Bagaimana cara ganti model AI?
+
+Edit file `~/.config/kilo/kilo.jsonc`. Ganti bagian `model` dan `provider`. Bisa pakai DeepSeek, Claude, GPT, Gemini, atau OpenRouter.
+
+### Apakah data saya aman?
+
+Ya. Semua data dan kode Anda disimpan di komputer lokal. API key disimpan di file konfigurasi yang hanya bisa dibaca oleh user Anda (chmod 600). Tidak ada data yang dikirim ke pihak ketiga selain ke provider AI yang Anda pilih.
+
+### Bisakah saya menggunakan lebih dari 1 provider?
+
+File konfigurasi hanya mendukung satu provider aktif. Untuk ganti provider, edit `kilo.jsonc` dan restart Kilo.
+
+### Kalau bingung, bagaimana cara minta bantuan?
+
+Tinggal tanya AI dalam bahasa Indonesia. Contoh: "Saya bingung, jelaskan langkah-langkahnya lagi pelan-pelan." AI akan merespon dengan bahasa yang lebih sederhana.
 
 ---
 

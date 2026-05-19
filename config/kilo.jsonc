@@ -5,7 +5,7 @@
   "mcp": {
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "$HOME"],
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "$HOME/kilo-projects"],
       "enabled": true
     },
     "git": {
@@ -32,7 +32,7 @@
     }
   },
   "permission": {
-    "bash": "allow",
+    "bash": "ask",
     "edit": "allow",
     "read": "allow",
     "glob": "allow",

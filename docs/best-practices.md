@@ -4,7 +4,7 @@ Panduan ini membantu Anda mendapatkan hasil terbaik dari AI agent. Tidak perlu b
 
 ---
 
-## 1. Cara Memberi Task yang Baik
+## Cara Memberi Task yang Baik
 
 ### Prinsip Dasar
 
@@ -45,7 +45,7 @@ Catatan tambahan: [hal penting lain]
 
 ---
 
-## 2. Jelaskan Masalah, Bukan Solusi
+## Jelaskan Masalah, Bukan Solusi
 
 Anda tidak perlu tahu teknologi. Cukup jelaskan apa masalahnya dan apa yang ingin dicapai.
 
@@ -63,7 +63,7 @@ AI akan memilih teknologi yang tepat untuk Anda.
 
 ---
 
-## 3. Beri Konteks Bisnis
+## Beri Konteks Bisnis
 
 Semakin AI mengerti tujuan bisnis Anda, semakin baik hasilnya.
 
@@ -81,7 +81,7 @@ Dari konteks ini, AI bisa:
 
 ---
 
-## 4. Mulai dari yang Kecil
+## Mulai dari yang Kecil
 
 Jangan langsung minta aplikasi besar. Mulai dari fitur inti, lalu tambah bertahap.
 
@@ -104,7 +104,7 @@ Ini lebih baik daripada langsung minta 20 fitur sekaligus. Hasilnya lebih rapi d
 
 ---
 
-## 5. Review dan Koreksi
+## Review dan Koreksi
 
 Setelah AI selesai membuat sesuatu, selalu:
 
@@ -124,7 +124,7 @@ AI tidak tersinggung. Semakin banyak feedback, semakin baik hasilnya.
 
 ---
 
-## 6. Infrastruktur dan Docker
+## Infrastruktur dan Docker
 
 ### Apa itu Docker?
 
@@ -132,18 +132,14 @@ Docker adalah cara menjalankan aplikasi beserta semua yang dibutuhkannya dalam s
 
 ### Komponen yang Otomatis Disertakan
 
-Saat AI membuat aplikasi, Docker Compose akan otomatis menyertakan komponen yang dibutuhkan:
+Saat AI membuat aplikasi, Docker Compose akan otomatis menyertakan komponen yang dibutuhkan berdasarkan jenis aplikasi Anda. Misalnya:
+- Ada penyimpanan data → database (PostgreSQL)
+- Ada login/session → cache (Redis)
+- Ada upload file → object storage (MinIO)
+- Ada fitur search → search engine
+- Ada kirim email → email testing tool
 
-| Kebutuhan | Komponen yang Disertakan |
-|-----------|--------------------------|
-| Simpan data (akun, produk, pesanan) | **PostgreSQL** (database) |
-| Simpan session / cache | **Redis** |
-| Upload gambar / file | **MinIO** (object storage) |
-| Kirim email | **Mailpit** (untuk testing) |
-| Background job / queue | **Redis** (sebagai message broker) |
-| Search teks canggih | **Meilisearch** atau **Elasticsearch** |
-
-Anda tidak perlu minta ini secara khusus. AI akan menambahkannya otomatis berdasarkan kebutuhan aplikasi Anda.
+AI menentukan sendiri mana yang diperlukan — Anda tidak perlu minta secara khusus. Aturan lengkapnya ada di panduan teknis AI. Yang perlu Anda tahu: semua komponen ini sudah dikonfigurasi dan tinggal pakai.
 
 ### Contoh: Anda Bilang "Buatkan Aplikasi E-commerce"
 
@@ -160,7 +156,7 @@ docker compose up
 
 ---
 
-## 7. Pola Penggunaan Umum
+## Pola Penggunaan Umum
 
 ### Buat Aplikasi dari Awal
 ```
@@ -194,7 +190,7 @@ docker compose up
 
 ---
 
-## 8. Tips Mendapatkan Hasil Terbaik
+## Tips Mendapatkan Hasil Terbaik
 
 ### Jelaskan Siapa User-nya
 ```
@@ -225,7 +221,7 @@ AI akan menyesuaikan tampilan dan kompleksitas berdasarkan siapa yang pakai.
 
 ---
 
-## 9. Yang Tidak Perlu Dilakukan
+## Yang Tidak Perlu Dilakukan
 
 - **Tidak perlu pilih framework** — AI akan pilihkan yang terbaik
 - **Tidak perlu pilih bahasa pemrograman** — AI akan tentukan
@@ -235,7 +231,7 @@ AI akan menyesuaikan tampilan dan kompleksitas berdasarkan siapa yang pakai.
 
 ---
 
-## 10. Contoh Sesi Lengkap
+## Contoh Sesi Lengkap
 
 Berikut contoh percakapan dari awal sampai selesai:
 
@@ -276,7 +272,7 @@ Dan seterusnya. Prosesnya iteratif — terus berkembang sesuai kebutuhan Anda.
 
 ---
 
-## 11. Integrasi dengan Layanan Eksternal
+## Integrasi dengan Layanan Eksternal
 
 Terkadang aplikasi butuh terhubung ke layanan luar: Google Drive, Gmail,
 WhatsApp, payment gateway, dll. AI akan memandu Anda menyiapkannya.

@@ -4,10 +4,11 @@ set -euo pipefail
 # ============================================================================
 # Kilo End-User Installer
 # One-command setup for Kilo CLI with pre-configured Indonesian AI agent
-# Usage: curl -fsSL https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/u-r-ai/kilo-end-user/54f2b6699f7a2e1801f8683bce9188b04bce8ef9/install.sh | bash
 # ============================================================================
 
-REPO_RAW="https://raw.githubusercontent.com/u-r-ai/kilo-end-user/main"
+REPO_SHA="54f2b6699f7a2e1801f8683bce9188b04bce8ef9"
+REPO_RAW="https://raw.githubusercontent.com/u-r-ai/kilo-end-user/$REPO_SHA"
 KILO_CONFIG_DIR="$HOME/.config/kilo"
 SCRIPT_PID=$$
 
@@ -26,6 +27,80 @@ err()   { echo -e "${RED}[ERROR]${NC} $1"; }
 header(){ echo -e "\n${CYAN}━━━ $1 ━━━${NC}\n"; }
 
 # ============================================================================
+# Argument parsing for non-interactive mode
+# ============================================================================
+NON_INTERACTIVE=false
+
+parse_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --non-interactive)
+        NON_INTERACTIVE=true
+        shift
+        ;;
+      --provider)
+        if [ -z "${2:-}" ]; then
+          err "--provider requires a value (deepseek, anthropic, openai, gemini, openrouter)"
+          exit 1
+        fi
+        PROVIDER_ID="$2"
+        shift 2
+        ;;
+      --api-key)
+        if [ -z "${2:-}" ]; then
+          err "--api-key requires a value"
+          exit 1
+        fi
+        API_KEY="$2"
+        shift 2
+        ;;
+      --model)
+        if [ -z "${2:-}" ]; then
+          err "--model requires a value"
+          exit 1
+        fi
+        DEFAULT_MODEL="$2"
+        shift 2
+        ;;
+      *)
+        err "Argumen tidak dikenal: $1"
+        echo "Penggunaan: curl -fsSL .../install.sh | bash -s -- [options]"
+        echo ""
+        echo "  --non-interactive     Non-interactive mode (no prompts)"
+        echo "  --provider <name>     AI provider: deepseek, anthropic, openai, gemini, openrouter"
+        echo "  --api-key <key>       API key for the provider"
+        echo "  --model <model>       Model name (defaults to provider's default)"
+        exit 1
+        ;;
+    esac
+  done
+
+  if [ "$NON_INTERACTIVE" = true ]; then
+    if [ -z "${PROVIDER_ID:-}" ]; then
+      err "Non-interactive mode requires --provider"
+      exit 1
+    fi
+    if [ -z "${API_KEY:-}" ]; then
+      err "Non-interactive mode requires --api-key"
+      exit 1
+    fi
+
+    # Set default model if not provided
+    case "${PROVIDER_ID:-}" in
+      deepseek)   PROVIDER_NAME="DeepSeek";   DEFAULT_MODEL="${DEFAULT_MODEL:-deepseek-chat}";;
+      anthropic)  PROVIDER_NAME="Anthropic";  DEFAULT_MODEL="${DEFAULT_MODEL:-claude-sonnet-4}";;
+      openai)     PROVIDER_NAME="OpenAI";     DEFAULT_MODEL="${DEFAULT_MODEL:-gpt-4o}";;
+      gemini)     PROVIDER_NAME="Gemini";     DEFAULT_MODEL="${DEFAULT_MODEL:-gemini-2.5-flash}";;
+      openrouter) PROVIDER_NAME="OpenRouter"; DEFAULT_MODEL="${DEFAULT_MODEL:-anthropic/claude-sonnet-4}";;
+      *)
+        err "Provider tidak dikenal: $PROVIDER_ID. Gunakan: deepseek, anthropic, openai, gemini, openrouter"
+        exit 1
+        ;;
+    esac
+  fi
+}
+
+# ============================================================================
 # Sudo handling
 # ============================================================================
 setup_sudo() {
@@ -42,8 +117,20 @@ setup_sudo() {
   info "Meminta password sudo untuk instalasi..."
   sudo -v
 
-  # Keep sudo alive in background
-  while true; do sudo -n true; sleep 60; kill -0 "$SCRIPT_PID" 2>/dev/null || exit; done 2>/dev/null &
+  # Keep sudo alive in background (capped at 30 minutes)
+  local sudo_keepalive_max=30
+  local sudo_count=0
+  while [ $sudo_count -lt $sudo_keepalive_max ]; do
+    sudo -n true 2>/dev/null || break
+    sleep 60
+    kill -0 "$SCRIPT_PID" 2>/dev/null || exit
+    sudo_count=$((sudo_count + 1))
+  done &
+  SUDO_PID=$!
+
+  if [ $sudo_count -ge $sudo_keepalive_max ]; then
+    warn "Sudo keep-alive telah berjalan 30 menit. Jika instalasi masih berlangsung, Anda mungkin perlu memasukkan password sudo kembali."
+  fi
   SUDO="sudo"
 }
 
@@ -58,6 +145,12 @@ detect_distro() {
   else
     DISTRO_ID="unknown"
     DISTRO_LIKE="unknown"
+  fi
+
+  # Validate DISTRO_ID: only alphanumeric and hyphens allowed
+  if ! echo "$DISTRO_ID" | grep -qE '^[a-zA-Z][a-zA-Z0-9_-]*$'; then
+    err "Nilai ID tidak valid dari /etc/os-release: '$DISTRO_ID'"
+    exit 1
   fi
 
   case "$DISTRO_ID" in
@@ -153,20 +246,60 @@ install_nodejs() {
 
   info "Menginstall Node.js LTS..."
 
+  local nodesource_script
   case "$PKG_MANAGER" in
     apt)
-      curl -fsSL https://deb.nodesource.com/setup_lts.x | $SUDO bash -
+      nodesource_script=$(mktemp /tmp/kilo-install-nodesource.XXXXXX)
+      curl -fsSL -o "$nodesource_script" https://deb.nodesource.com/setup_lts.x
+      if [ ! -s "$nodesource_script" ]; then
+        err "Gagal mengunduh NodeSource setup script (file kosong)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      if ! head -5 "$nodesource_script" | grep -qi "bash\|nodesource\|nodejs" 2>/dev/null; then
+        err "NodeSource setup script tidak valid (header tidak dikenal)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      $SUDO bash "$nodesource_script"
+      rm -f "$nodesource_script"
       $SUDO apt-get install -y nodejs
       ;;
     dnf)
-      curl -fsSL https://rpm.nodesource.com/setup_lts.x | $SUDO bash -
+      nodesource_script=$(mktemp /tmp/kilo-install-nodesource.XXXXXX)
+      curl -fsSL -o "$nodesource_script" https://rpm.nodesource.com/setup_lts.x
+      if [ ! -s "$nodesource_script" ]; then
+        err "Gagal mengunduh NodeSource setup script (file kosong)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      if ! head -5 "$nodesource_script" | grep -qi "bash\|nodesource\|nodejs" 2>/dev/null; then
+        err "NodeSource setup script tidak valid (header tidak dikenal)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      $SUDO bash "$nodesource_script"
+      rm -f "$nodesource_script"
       $SUDO dnf install -y nodejs
       ;;
     pacman)
       $SUDO pacman -S --noconfirm nodejs npm
       ;;
     zypper)
-      curl -fsSL https://rpm.nodesource.com/setup_lts.x | $SUDO bash -
+      nodesource_script=$(mktemp /tmp/kilo-install-nodesource.XXXXXX)
+      curl -fsSL -o "$nodesource_script" https://rpm.nodesource.com/setup_lts.x
+      if [ ! -s "$nodesource_script" ]; then
+        err "Gagal mengunduh NodeSource setup script (file kosong)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      if ! head -5 "$nodesource_script" | grep -qi "bash\|nodesource\|nodejs" 2>/dev/null; then
+        err "NodeSource setup script tidak valid (header tidak dikenal)"
+        rm -f "$nodesource_script"
+        exit 1
+      fi
+      $SUDO bash "$nodesource_script"
+      rm -f "$nodesource_script"
       $SUDO zypper install -y nodejs
       ;;
   esac
@@ -192,12 +325,47 @@ install_docker() {
       $SUDO apt-get update -y
       $SUDO apt-get install -y ca-certificates gnupg
       $SUDO install -m 0755 -d /etc/apt/keyrings
-      curl -fsSL https://download.docker.com/linux/$DISTRO_ID/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+
+      # Download Docker GPG key to temp file, verify, then install
+      local docker_gpg_tmp
+      docker_gpg_tmp=$(mktemp /tmp/kilo-install-docker-gpg.XXXXXX)
+      curl -fsSL -o "$docker_gpg_tmp" "https://download.docker.com/linux/$DISTRO_ID/gpg"
+      if [ ! -s "$docker_gpg_tmp" ]; then
+        err "Gagal mengunduh Docker GPG key (file kosong)"
+        rm -f "$docker_gpg_tmp"
+        exit 1
+      fi
+      if ! gpg --batch --quiet --import --dry-run "$docker_gpg_tmp" 2>/dev/null; then
+        err "Docker GPG key tidak valid"
+        rm -f "$docker_gpg_tmp"
+        exit 1
+      fi
+      $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg "$docker_gpg_tmp" 2>/dev/null
+      rm -f "$docker_gpg_tmp"
+
+      if [ ! -s /etc/apt/keyrings/docker.gpg ]; then
+        err "Docker GPG keyring file kosong setelah import"
+        exit 1
+      fi
       $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
 
       local arch
       arch=$(dpkg --print-architecture)
-      echo "deb [arch=$arch signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO_ID $(lsb_release -cs 2>/dev/null || echo stable) stable" | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+      # Use VERSION_CODENAME from /etc/os-release as primary, fallback to lsb_release
+      local os_codename
+      if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_codename="${VERSION_CODENAME:-}"
+      fi
+      if [ -z "$os_codename" ]; then
+        os_codename=$(lsb_release -cs 2>/dev/null || true)
+      fi
+      if [ -z "$os_codename" ]; then
+        warn "Tidak bisa mendeteksi codename OS, menggunakan 'stable' sebagai fallback"
+        os_codename="stable"
+      fi
+      echo "deb [arch=$arch signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO_ID $os_codename stable" | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
 
       $SUDO apt-get update -y
       $SUDO apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -235,7 +403,15 @@ setup_docker_group() {
   $SUDO groupadd docker 2>/dev/null || true
   $SUDO usermod -aG docker "$USER"
   warn "User '$USER' ditambahkan ke docker group."
-  warn "Anda perlu logout dan login lagi agar Docker bisa dipakai tanpa sudo."
+
+  # Attempt to activate docker group in current session
+  if command -v newgrp &>/dev/null; then
+    warn "Menjalankan: newgrp docker (perintah shell, grup aktif di sesi baru)"
+  elif command -v sg &>/dev/null; then
+    warn "Menjalankan: sg docker -c \"...\" (grup aktif di sesi baru)"
+  fi
+  $SUDO -u "$USER" sg docker -c "docker ps -q" 2>/dev/null && ok "Docker group aktif di sesi ini" || \
+    warn "Anda perlu logout dan login lagi agar Docker bisa dipakai tanpa sudo."
 }
 
 # ============================================================================
@@ -250,7 +426,22 @@ install_kilo() {
   fi
 
   info "Menginstall Kilo CLI..."
-  curl -fsSL https://kilo.ai/cli/install | bash
+
+  local kilo_install_script
+  kilo_install_script=$(mktemp /tmp/kilo-install-kilo.XXXXXX)
+  curl -fsSL -o "$kilo_install_script" https://kilo.ai/cli/install
+  if [ ! -s "$kilo_install_script" ]; then
+    err "Gagal mengunduh Kilo CLI installer (file kosong)"
+    rm -f "$kilo_install_script"
+    exit 1
+  fi
+  if ! head -5 "$kilo_install_script" | grep -qi "bash\|kilo\|install" 2>/dev/null; then
+    err "Kilo CLI installer tidak valid (header tidak dikenal)"
+    rm -f "$kilo_install_script"
+    exit 1
+  fi
+  bash "$kilo_install_script"
+  rm -f "$kilo_install_script"
 
   # Ensure kilo is in PATH for this session
   export PATH="$HOME/.local/bin:$HOME/.kilo/bin:$PATH"
@@ -260,6 +451,17 @@ install_kilo() {
   else
     warn "Kilo CLI terinstall tapi tidak ditemukan di PATH. Pastikan ~/.local/bin ada di PATH Anda."
   fi
+
+  # Persist Kilo CLI PATH to shell config with duplicate guard
+  local path_line="export PATH=\"\$HOME/.local/bin:\$HOME/.kilo/bin:\$PATH\""
+  for rc_file in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$rc_file" ]; then
+      if ! grep -qF 'export PATH="$HOME/.local/bin:$HOME/.kilo/bin:$PATH"' "$rc_file" 2>/dev/null; then
+        echo "$path_line" >> "$rc_file"
+        ok "Kilo PATH ditambahkan ke $rc_file"
+      fi
+    fi
+  done
 }
 
 # ============================================================================
@@ -270,7 +472,7 @@ select_provider() {
 
   echo "Pilih provider yang ingin Anda gunakan:"
   echo ""
-  echo "  1) DeepSeek   (DeepSeek V4 Pro) — https://platform.deepseek.com/ [default]"
+  echo "  1) DeepSeek   (deepseek-chat) — https://platform.deepseek.com/ [default]"
   echo "  2) Anthropic  (Claude)          — https://console.anthropic.com/"
   echo "  3) OpenAI     (GPT)             — https://platform.openai.com/api-keys"
   echo "  4) Google     (Gemini)          — https://aistudio.google.com/apikey"
@@ -285,13 +487,13 @@ select_provider() {
       1)
         PROVIDER_ID="deepseek"
         PROVIDER_NAME="DeepSeek"
-        DEFAULT_MODEL="deepseek-v4-pro"
+        DEFAULT_MODEL="deepseek-chat"
         break
         ;;
       2)
         PROVIDER_ID="anthropic"
         PROVIDER_NAME="Anthropic"
-        DEFAULT_MODEL="claude-sonnet-4-20250514"
+        DEFAULT_MODEL="claude-sonnet-4"
         break
         ;;
       3)
@@ -309,7 +511,7 @@ select_provider() {
       5)
         PROVIDER_ID="openrouter"
         PROVIDER_NAME="OpenRouter"
-        DEFAULT_MODEL="anthropic/claude-sonnet-4-20250514"
+        DEFAULT_MODEL="anthropic/claude-sonnet-4"
         break
         ;;
       *)
@@ -324,11 +526,12 @@ select_provider() {
   echo ""
 
   if [ "$PROVIDER_ID" = "deepseek" ]; then
-    read -rp "Hubungi tim Anda untuk mendapatkan API key DeepSeek, lalu masukkan di sini: " API_KEY
+    read -rsp "Hubungi tim Anda untuk mendapatkan API key DeepSeek, lalu masukkan di sini: " API_KEY
   else
-    read -rp "Masukkan API Key $PROVIDER_NAME Anda: " API_KEY
+    read -rsp "Masukkan API Key $PROVIDER_NAME Anda: " API_KEY
   fi
 
+  echo ""
   if [ -z "$API_KEY" ]; then
     err "API Key tidak boleh kosong!"
     exit 1
@@ -352,23 +555,23 @@ validate_api_key() {
 
     case "$PROVIDER_ID" in
       deepseek)
-        response=$(curl -s -w "\n%{http_code}" -X POST "https://api.deepseek.com/v1/models" \
+        response=$(curl -s -w "\\n%{http_code}" -X POST "https://api.deepseek.com/v1/models" \
           -H "Authorization: Bearer $API_KEY" 2>&1) || true
         ;;
       anthropic)
-        response=$(curl -s -w "\n%{http_code}" "https://api.anthropic.com/v1/models" \
+        response=$(curl -s -w "\\n%{http_code}" "https://api.anthropic.com/v1/models" \
           -H "x-api-key: $API_KEY" \
           -H "anthropic-version: 2023-06-01" 2>&1) || true
         ;;
       openai)
-        response=$(curl -s -w "\n%{http_code}" "https://api.openai.com/v1/models" \
+        response=$(curl -s -w "\\n%{http_code}" "https://api.openai.com/v1/models" \
           -H "Authorization: Bearer $API_KEY" 2>&1) || true
         ;;
       gemini)
-        response=$(curl -s -w "\n%{http_code}" "https://generativelanguage.googleapis.com/v1/models?key=$API_KEY" 2>&1) || true
+        response=$(curl -s -w "\\n%{http_code}" "https://generativelanguage.googleapis.com/v1/models?key=$API_KEY" 2>&1) || true
         ;;
       openrouter)
-        response=$(curl -s -w "\n%{http_code}" "https://openrouter.ai/api/v1/models" \
+        response=$(curl -s -w "\\n%{http_code}" "https://openrouter.ai/api/v1/models" \
           -H "Authorization: Bearer $API_KEY" 2>&1) || true
         ;;
     esac
@@ -425,6 +628,9 @@ deploy_config() {
 
   echo "$jsonc_content" > "$KILO_CONFIG_DIR/kilo.jsonc"
 
+  # Create MCP-restricted projects directory
+  mkdir -p "$HOME/kilo-projects"
+
   # Download agent
   info "Mengunduh agent assistant..."
   curl -fsSL "$REPO_RAW/config/agents/assistant.md" > "$KILO_CONFIG_DIR/agents/assistant.md"
@@ -449,7 +655,9 @@ set_permissions() {
 
   chown -R "$USER:$USER" "$KILO_CONFIG_DIR" 2>/dev/null || true
   find "$KILO_CONFIG_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
-  find "$KILO_CONFIG_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+  # sensitive config (contains API key) → owner-only
+  chmod 600 "$KILO_CONFIG_DIR/kilo.jsonc" 2>/dev/null || true
+  find "$KILO_CONFIG_DIR" -type f -not -name 'kilo.jsonc' -exec chmod 644 {} \; 2>/dev/null || true
 
   ok "Permissions teratur"
 }
@@ -492,64 +700,27 @@ verify_install() {
     ok "Konfigurasi: $KILO_CONFIG_DIR/kilo.jsonc"
   else
     err "Konfigurasi tidak ditemukan"
-    all_ok=false
-  fi
-
-  if [ -f "$KILO_CONFIG_DIR/agents/assistant.md" ]; then
-    ok "Agent: assistant"
-  else
-    err "Agent assistant tidak ditemukan"
-    all_ok=false
-  fi
-
-  if $all_ok; then
-    return 0
-  else
-    return 1
   fi
 }
 
 # ============================================================================
-# Print success
+# Cleanup
 # ============================================================================
-print_success() {
-  echo ""
-  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo -e "${GREEN}  Instalasi Selesai!${NC}"
-  echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  echo ""
-  echo "  Provider: $PROVIDER_NAME"
-  echo "  Model:    $DEFAULT_MODEL"
-  echo "  Config:   $KILO_CONFIG_DIR/"
-  echo ""
-  echo "  Cara menjalankan:"
-  echo ""
-  echo "    1. Buka terminal baru (atau logout & login jika Docker baru diinstall)"
-  echo "    2. Jalankan: kilo"
-  echo "    3. Ketik pesan Anda, contoh:"
-  echo ""
-  echo '       "Saya mau bikin aplikasi laundry"'
-  echo '       "Buatkan landing page untuk bisnis saya"'
-  echo '       "Buat automation untuk kirim invoice"'
-  echo ""
-  echo "  Commands yang tersedia:"
-  echo "    /start   — Mulai project baru"
-  echo "    /status  — Cek status sistem"
-  echo ""
-  echo -e "${CYAN}  Dokumentasi: https://github.com/u-r-ai/kilo-end-user${NC}"
-  echo ""
+cleanup() {
+  header "Pembersihan"
+
+  info "Menghapus file sementara..."
+  rm -f /tmp/kilo-install-* 2>/dev/null || true
+  ok "Selesai"
 }
 
 # ============================================================================
 # Main
 # ============================================================================
 main() {
-  echo ""
-  echo -e "${CYAN}╔══════════════════════════════════════════════════════╗${NC}"
-  echo -e "${CYAN}║       Kilo End-User — AI Software Builder           ║${NC}"
-  echo -e "${CYAN}║       Installer untuk Linux                         ║${NC}"
-  echo -e "${CYAN}╚══════════════════════════════════════════════════════╝${NC}"
-  echo ""
+  header "Selamat datang di Kilo CLI Installer"
+
+  parse_args "$@"
 
   setup_sudo
   detect_distro
@@ -558,17 +729,24 @@ main() {
   install_docker
   setup_docker_group
   install_kilo
-  select_provider
-  validate_api_key
+
+  if [ "$NON_INTERACTIVE" = false ]; then
+    select_provider
+    validate_api_key
+  else
+    info "Non-interactive mode: menggunakan provider $PROVIDER_NAME dengan model $DEFAULT_MODEL"
+  fi
+
   deploy_config
   set_permissions
+  verify_install
+  cleanup
 
-  if verify_install; then
-    print_success
-  else
-    err "Instalasi selesai dengan beberapa masalah. Periksa pesan di atas."
-    exit 1
-  fi
+  echo ""
+  header "Instalasi selesai!"
+  echo ""
+  info "Untuk memulai, jalankan: kilo"
+  echo ""
 }
 
 main "$@"

@@ -79,7 +79,9 @@ Tampilkan rencana dalam format:
 - [ ] Buat halaman utama
 - [ ] Tambah fitur login
 - [ ] Setup Docker
-- [ ] Testing
+- [ ] Setup testing (pytest untuk Python / Jest untuk JavaScript)
+- [ ] Buat minimal 1 test per endpoint / fitur utama
+- [ ] Jalankan test dan pastikan pass
 ```
 
 ### 3. Setup Project
@@ -190,6 +192,8 @@ volumes:
 
 **Tambahkan service lain (MinIO, Meilisearch, Mailpit) hanya jika dibutuhkan.**
 
+> **Test service:** Untuk menjalankan test di CI/local, tambahkan service `test` di docker-compose.yml yang menggunakan perintah test (misal: `command: npm test` atau `command: pytest`). Service test bisa dijalankan dengan `docker compose run test` dan tidak perlu berjalan di background.
+
 ### 6. Dokumentasi
 
 Buat README sederhana yang berisi:
@@ -197,6 +201,37 @@ Buat README sederhana yang berisi:
 - Cara menjalankan
 - Cara menggunakan
 - Cara mengubah konfigurasi
+- Siap untuk dipakai user
+
+### 7. Testing
+
+Setiap project WAJIB memiliki testing strategy.
+
+#### Framework Default
+
+| Bahasa/Framework | Framework Test | Perintah |
+|---|---|---|
+| Python (FastAPI / Flask / Django) | **pytest** | `pytest -v` |
+| Python (Django) | Django Test + pytest-django | `python manage.py test` |
+| Node.js / Express / Next.js | **Jest** | `npm test` atau `npx jest` |
+| React / Vue / Svelte (frontend) | Vitest atau Jest | `npm run test` |
+| Go | Go built-in testing | `go test ./...` |
+
+#### Aturan Testing
+
+1. **Minimal 1 test per endpoint/fitur utama** — setidaknya test happy path
+2. **Test harus bisa jalan sendiri** — tanpa interaksi manual
+3. **Gunakan test database** — jangan pake production database
+   - Untuk Python: gunakan `pytest-django` in-memory atau testcontainers
+   - Untuk Node.js: gunakan test database terpisah atau in-memory (sqlite:memory)
+4. **Jangan test dependency eksternal** — mock layanan seperti payment gateway, WhatsApp API, Google Drive
+5. **Test harus pass sebelum dianggap selesai** — jangan skip failing test
+
+#### Cara Integrasi
+
+- Di `package.json`: tambahkan script `"test": "jest"`
+- Di `docker-compose.yml`: tambahkan service `test` seperti di atas
+- Pastikan `README.md` menyertakan perintah untuk menjalankan test
 
 ## Prioritas Teknis
 
